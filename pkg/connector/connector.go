@@ -281,6 +281,40 @@ func (tc *TwilioClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.M
 	}, nil
 }
 
+var _ bridgev2.IdentifierResolvingNetworkAPI = (*TwilioClient)(nil)
+
+func (tc *TwilioClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	e164Number, err := bridgev2.CleanPhoneNumber(identifier)
+	if err != nil {
+		return nil, err
+	}
+	userID := makeUserID(e164Number)
+	portalID := networkid.PortalKey{
+		ID:       makePortalID(e164Number),
+		Receiver: tc.UserLogin.ID,
+	}
+	ghost, err := tc.UserLogin.Bridge.GetGhostByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ghost: %w", err)
+	}
+	portal, err := tc.UserLogin.Bridge.GetPortalByID(ctx, portalID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get portal: %w", err)
+	}
+	ghostInfo, _ := tc.GetUserInfo(ctx, ghost)
+	portalInfo, _ := tc.GetChatInfo(ctx, portal)
+	return &bridgev2.ResolveIdentifierResponse{
+		Ghost:    ghost,
+		UserID:   userID,
+		UserInfo: ghostInfo,
+		Chat: &bridgev2.CreateChatResponse{
+			Portal:     portal,
+			PortalID:   portalID,
+			PortalInfo: portalInfo,
+		},
+	}, nil
+}
+
 func (tc *TwilioConnector) GetLoginFlows() []bridgev2.LoginFlow {
 	return []bridgev2.LoginFlow{{
 		Name:        "Auth token",
