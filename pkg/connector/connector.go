@@ -115,15 +115,33 @@ func (tc *TwilioConnector) GetConfig() (example string, data any, upgrader confi
 	return "", nil, nil
 }
 
+func (tc *TwilioConnector) GetDBMetaTypes() database.MetaTypes {
+	return database.MetaTypes{
+		Portal:   nil,
+		Ghost:    nil,
+		Message:  nil,
+		Reaction: nil,
+		UserLogin: func() any {
+			return &UserLoginMetadata{}
+		},
+	}
+}
+
+type UserLoginMetadata struct {
+	Phone      string `json:"phone"`
+	PhoneSID   string `json:"phone_sid"`
+	AuthToken  string `json:"auth_token"`
+	AccountSID string `json:"account_sid"`
+}
+
 func (tc *TwilioConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
-	accountSID := login.Metadata.Extra["account_sid"].(string)
-	authToken := login.Metadata.Extra["auth_token"].(string)
+	meta := login.Metadata.(*UserLoginMetadata)
 	restClient := twilio.NewRestClientWithParams(twilio.ClientParams{
-		Username:   accountSID,
-		Password:   authToken,
-		AccountSid: accountSID,
+		Username:   meta.AccountSID,
+		Password:   meta.AuthToken,
+		AccountSid: meta.AccountSID,
 	})
-	validator := tclient.NewRequestValidator(authToken)
+	validator := tclient.NewRequestValidator(meta.AuthToken)
 	login.Client = &TwilioClient{
 		UserLogin:        login,
 		Twilio:           restClient,
@@ -145,16 +163,16 @@ func (tc *TwilioClient) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to list phone numbers: %w", err)
 	}
-	numberInUse := tc.UserLogin.Metadata.Extra["phone"].(string)
+	meta := tc.UserLogin.Metadata.(*UserLoginMetadata)
 	var numberFound bool
 	for _, number := range phoneNumbers {
-		if number.PhoneNumber != nil && *number.PhoneNumber == numberInUse {
+		if number.PhoneNumber != nil && *number.PhoneNumber == meta.Phone {
 			numberFound = true
 			break
 		}
 	}
 	if !numberFound {
-		return fmt.Errorf("phone number %s not found on account", numberInUse)
+		return fmt.Errorf("phone number %s not found on account", meta.Phone)
 	}
 	return nil
 }
@@ -186,8 +204,8 @@ func makeUserLoginID(accountSID, phoneSID string) networkid.UserLoginID {
 }
 
 func (tc *TwilioClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
-	phoneNum := tc.UserLogin.Metadata.Extra["phone"].(string)
-	return makeUserID(phoneNum) == userID
+	meta := tc.UserLogin.Metadata.(*UserLoginMetadata)
+	return makeUserID(meta.Phone) == userID
 }
 
 func (tc *TwilioClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
@@ -198,7 +216,7 @@ func (tc *TwilioClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal
 				{
 					EventSender: bridgev2.EventSender{
 						IsFromMe: true,
-						Sender:   makeUserID(tc.UserLogin.Metadata.Extra["phone"].(string)),
+						Sender:   makeUserID(tc.UserLogin.Metadata.(*UserLoginMetadata).Phone),
 					},
 					// This could be omitted, but leave it in to be explicit.
 					Membership: event.MembershipJoin,
@@ -267,7 +285,7 @@ func (tc *TwilioClient) convertMessage(ctx context.Context, portal *bridgev2.Por
 func (tc *TwilioClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (message *bridgev2.MatrixMessageResponse, err error) {
 	resp, err := tc.Twilio.Api.CreateMessage(&openapi.CreateMessageParams{
 		To:   ptr.Ptr(fmt.Sprintf("+%s", msg.Portal.ID)),
-		From: ptr.Ptr(tc.UserLogin.Metadata.Extra["phone"].(string)),
+		From: ptr.Ptr(tc.UserLogin.Metadata.(*UserLoginMetadata).Phone),
 		Body: ptr.Ptr(msg.Content.Body),
 	})
 	if err != nil {
@@ -442,17 +460,13 @@ func (tl *TwilioLogin) submitChosenPhoneNumber(ctx context.Context, input map[st
 
 func (tl *TwilioLogin) finishLogin(ctx context.Context, phoneNumber twilioPhoneNumber) (*bridgev2.LoginStep, error) {
 	ul, err := tl.User.NewLogin(ctx, &database.UserLogin{
-		ID: makeUserLoginID(tl.AccountSID, phoneNumber.SID),
-		Metadata: database.UserLoginMetadata{
-			StandardUserLoginMetadata: database.StandardUserLoginMetadata{
-				RemoteName: phoneNumber.PrettyNumber,
-			},
-			Extra: map[string]any{
-				"phone":       phoneNumber.Number,
-				"phone_sid":   phoneNumber.SID,
-				"auth_token":  tl.AuthToken,
-				"account_sid": tl.AccountSID,
-			},
+		ID:         makeUserLoginID(tl.AccountSID, phoneNumber.SID),
+		RemoteName: phoneNumber.PrettyNumber,
+		Metadata: &UserLoginMetadata{
+			Phone:      phoneNumber.Number,
+			PhoneSID:   phoneNumber.SID,
+			AuthToken:  tl.AuthToken,
+			AccountSID: tl.AccountSID,
 		},
 	}, &bridgev2.NewLoginParams{
 		LoadUserLogin: func(ctx context.Context, login *bridgev2.UserLogin) error {
