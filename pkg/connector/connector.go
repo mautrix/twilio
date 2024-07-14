@@ -315,7 +315,7 @@ func (tc *TwilioClient) ResolveIdentifier(ctx context.Context, identifier string
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ghost: %w", err)
 	}
-	portal, err := tc.UserLogin.Bridge.GetPortalByID(ctx, portalID)
+	portal, err := tc.UserLogin.Bridge.GetPortalByKey(ctx, portalID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get portal: %w", err)
 	}
@@ -327,7 +327,7 @@ func (tc *TwilioClient) ResolveIdentifier(ctx context.Context, identifier string
 		UserInfo: ghostInfo,
 		Chat: &bridgev2.CreateChatResponse{
 			Portal:     portal,
-			PortalID:   portalID,
+			PortalKey:  portalID,
 			PortalInfo: portalInfo,
 		},
 	}, nil
