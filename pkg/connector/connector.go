@@ -19,6 +19,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -221,14 +222,14 @@ func (tc *TwilioClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal
 					// This could be omitted, but leave it in to be explicit.
 					Membership: event.MembershipJoin,
 					// Make the user moderator, so they can adjust the room metadata if they want to.
-					PowerLevel: 50,
+					PowerLevel: ptr.Ptr(50),
 				},
 				{
 					EventSender: bridgev2.EventSender{
 						Sender: networkid.UserID(portal.ID),
 					},
 					Membership: event.MembershipJoin,
-					PowerLevel: 50,
+					PowerLevel: ptr.Ptr(50),
 				},
 			},
 		},
@@ -248,24 +249,26 @@ func (tc *TwilioClient) GetWebhookURL() string {
 }
 
 func (tc *TwilioClient) HandleWebhook(ctx context.Context, params map[string]string) {
-	tc.UserLogin.Bridge.QueueRemoteEvent(tc.UserLogin, &bridgev2.SimpleRemoteEvent[map[string]string]{
-		Type: bridgev2.RemoteEventMessage,
-		LogContext: func(c zerolog.Context) zerolog.Context {
-			return c.
-				Str("from", params["From"]).
-				Str("message_id", params["MessageSid"])
+	tc.UserLogin.Bridge.QueueRemoteEvent(tc.UserLogin, &simplevent.Message[map[string]string]{
+		EventMeta: simplevent.EventMeta{
+			Type: bridgev2.RemoteEventMessage,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.
+					Str("from", params["From"]).
+					Str("message_id", params["MessageSid"])
+			},
+			PortalKey: networkid.PortalKey{
+				ID:       makePortalID(params["From"]),
+				Receiver: tc.UserLogin.ID,
+			},
+			CreatePortal: true,
+			Sender: bridgev2.EventSender{
+				Sender: makeUserID(params["From"]),
+			},
+			Timestamp: time.Now(),
 		},
-		PortalKey: networkid.PortalKey{
-			ID:       makePortalID(params["From"]),
-			Receiver: tc.UserLogin.ID,
-		},
-		Data:         params,
-		CreatePortal: true,
-		ID:           networkid.MessageID(params["MessageSid"]),
-		Sender: bridgev2.EventSender{
-			Sender: makeUserID(params["From"]),
-		},
-		Timestamp:          time.Now(),
+		Data:               params,
+		ID:                 networkid.MessageID(params["MessageSid"]),
 		ConvertMessageFunc: tc.convertMessage,
 	})
 }
