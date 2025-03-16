@@ -20,6 +20,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
+	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -97,6 +98,10 @@ func (tc *TwilioConnector) ReceiveMessage(w http.ResponseWriter, r *http.Request
 	}
 }
 
+func (tc *TwilioConnector) GetBridgeInfoVersion() (info, capabilities int) {
+	return 1, 1
+}
+
 func (tc *TwilioConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
 	return &bridgev2.NetworkGeneralCapabilities{}
 }
@@ -155,14 +160,23 @@ type TwilioClient struct {
 	UserLogin        *bridgev2.UserLogin
 	Twilio           *twilio.RestClient
 	RequestValidator tclient.RequestValidator
+	TokenValidated   bool
 }
 
 var _ bridgev2.NetworkAPI = (*TwilioClient)(nil)
 
-func (tc *TwilioClient) Connect(ctx context.Context) error {
+func (tc *TwilioClient) Connect(ctx context.Context) {
 	phoneNumbers, err := tc.Twilio.Api.ListIncomingPhoneNumber(nil)
 	if err != nil {
-		return fmt.Errorf("failed to list phone numbers: %w", err)
+		tc.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      "twilio-api-error",
+			Message:    "Failed to list phone numbers",
+			Info: map[string]any{
+				"go_error": err.Error(),
+			},
+		})
+		return
 	}
 	meta := tc.UserLogin.Metadata.(*UserLoginMetadata)
 	var numberFound bool
@@ -173,21 +187,26 @@ func (tc *TwilioClient) Connect(ctx context.Context) error {
 		}
 	}
 	if !numberFound {
-		return fmt.Errorf("phone number %s not found on account", meta.Phone)
+		tc.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      "twilio-phone-not-found",
+			Message:    fmt.Sprintf("phone number %s not found on account", meta.Phone),
+		})
+		return
 	}
-	return nil
+	tc.TokenValidated = true
 }
 
 func (tc *TwilioClient) Disconnect() {}
 
 func (tc *TwilioClient) IsLoggedIn() bool {
-	return true
+	return tc.TokenValidated
 }
 
 func (tc *TwilioClient) LogoutRemote(ctx context.Context) {}
 
-func (tc *TwilioClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *bridgev2.NetworkRoomCapabilities {
-	return &bridgev2.NetworkRoomCapabilities{
+func (tc *TwilioClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
+	return &event.RoomFeatures{
 		MaxTextLength: 1600,
 	}
 }
