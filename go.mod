@@ -7,7 +7,7 @@ toolchain go1.24.1
 require (
 	github.com/gorilla/mux v1.8.0
 	github.com/rs/zerolog v1.33.0
-	github.com/twilio/twilio-go v1.24.0
+	github.com/twilio/twilio-go v1.23.2
 	go.mau.fi/util v0.8.6
 	maunium.net/go/mautrix v0.23.2
 )
