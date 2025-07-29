@@ -6,7 +6,7 @@ toolchain go1.24.5
 
 require (
 	github.com/rs/zerolog v1.34.0
-	github.com/twilio/twilio-go v1.23.2
+	github.com/twilio/twilio-go v1.27.0
 	go.mau.fi/util v0.8.9-0.20250723171559-474867266038
 	maunium.net/go/mautrix v0.24.3-0.20250729144204-bcf92ba0e80a
 )
@@ -16,6 +16,7 @@ require (
 	github.com/beevik/etree v1.1.0 // indirect
 	github.com/coder/websocket v1.8.13 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
