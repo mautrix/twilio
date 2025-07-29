@@ -8,14 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/hlog"
 	"github.com/twilio/twilio-go"
 	tclient "github.com/twilio/twilio-go/client"
 	openapi "github.com/twilio/twilio-go/rest/api/v2010"
 	"github.com/twilio/twilio-go/twiml"
 	"go.mau.fi/util/configupgrade"
+	"go.mau.fi/util/exhttp"
 	"go.mau.fi/util/ptr"
+	"go.mau.fi/util/requestlog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -41,8 +43,14 @@ func (tc *TwilioConnector) Start(ctx context.Context) error {
 	} else if server.GetPublicAddress() == "" {
 		return fmt.Errorf("public address of bridge not configured")
 	}
-	r := server.GetRouter().PathPrefix("/_twilio").Subrouter()
-	r.HandleFunc("/{loginID}/receive", tc.ReceiveMessage).Methods(http.MethodPost)
+	router := http.NewServeMux()
+	router.HandleFunc("POST /{loginID}/receive", tc.ReceiveMessage)
+	server.GetRouter().Handle("/_twilio/", exhttp.ApplyMiddleware(
+		router,
+		exhttp.StripPrefix("/_twilio"),
+		hlog.NewHandler(tc.br.Log.With().Str("component", "twilio webhooks").Logger()),
+		requestlog.AccessLogger(requestlog.Options{TrustXForwardedFor: true}),
+	))
 	return nil
 }
 
@@ -68,7 +76,7 @@ func (tc *TwilioConnector) ReceiveMessage(w http.ResponseWriter, r *http.Request
 
 	// Get the user login based on the path. We need it to find the right token
 	// to use for validating the request signature.
-	loginID := mux.Vars(r)["loginID"]
+	loginID := r.PathValue("loginID")
 	login := tc.br.GetCachedUserLoginByID(networkid.UserLoginID(loginID))
 	if login == nil {
 		w.WriteHeader(http.StatusNotFound)
