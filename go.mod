@@ -8,7 +8,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/twilio/twilio-go v1.27.0
 	go.mau.fi/util v0.8.9-0.20250723171559-474867266038
-	maunium.net/go/mautrix v0.24.3-0.20250729144204-bcf92ba0e80a
+	maunium.net/go/mautrix v0.24.3-0.20250801084753-196164ed6749
 )
 
 require (
